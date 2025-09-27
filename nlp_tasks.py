@@ -367,25 +367,41 @@ def make_mcq(text: str, num_questions: int = 6, seed: int = 42) -> List[Dict]:
 
 # ---------- Flashcard generation ----------
 import re
-from typing import List, Dict
+from typing import List, Tuple
 
-def make_flashcards(text: str, num_cards: int = 8) -> List[Dict]:
+def make_flashcards(text: str, num_cards: int = 8) -> List[Tuple[str, str]]:
     """
-    Generate simple flashcards from text.
-    Each card = {"question": str, "answer": str}
+    Generate flashcards (Q,A) pairs from the input text.
+    Each card is a tuple: (question, answer).
     """
-    # Split text into sentences
-    sents = re.split(r'(?<=[.!?])\s+', text)
-    cards: List[Dict] = []
+    sents = re.split(r'(?<=[.!?])\s+', text)  # split into sentences
+    cards: List[Tuple[str, str]] = []
 
     for s in sents:
+        s = s.strip()
         words = s.split()
         if len(words) < 6:
             continue
-        # Heuristic: take first 5–8 words as "question"
-        q = " ".join(words[:7]) + " …"
-        a = s.strip()
-        cards.append({"question": q, "answer": a})
+
+        # Heuristic: Use first part as Q and the full sentence as A
+        if " is " in s:
+            parts = s.split(" is ", 1)
+            q = f"What is {parts[0].strip()}?"
+            a = s
+        elif " was " in s:
+            parts = s.split(" was ", 1)
+            q = f"What was {parts[0].strip()}?"
+            a = s
+        elif " are " in s:
+            parts = s.split(" are ", 1)
+            q = f"What are {parts[0].strip()}?"
+            a = s
+        else:
+            # fallback: first 6 words as Q
+            q = "Complete this: " + " ".join(words[:6]) + " ..."
+            a = s
+
+        cards.append((q, a))
 
         if len(cards) >= num_cards:
             break
