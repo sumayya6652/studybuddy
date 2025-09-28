@@ -1,6 +1,16 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
 # app.py — single-file UI with same-tab navigation (no new tabs)
 import streamlit as st
 import re
@@ -186,7 +196,7 @@ elif choice == "Quiz":
             total = len(st.session_state.quiz_qs)
             st.success(f"Score: {correct}/{total}")
 
-# --- Flashcards ---
+# --- Flashcards ---# --- Flashcards ---
 elif choice == "Flashcards":
     st.header("🃏 Flashcards")
     with st.sidebar:
@@ -194,17 +204,70 @@ elif choice == "Flashcards":
         num_cards = st.slider("Number of cards", 3, 15, 6, 1)
 
     text, source = uploader_block("📂 Upload / paste text for flashcards")
-    if st.button("🃏 Generate Flashcards", type="primary"):
-        if not text.strip():
+
+    # --- normalize helper: accepts tuples OR dicts OR strings ---
+    def _normalize_cards(raw):
+        norm = []
+        if not raw:
+            return norm
+        for item in raw:
+            # (q, a) tuple/list
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                q, a = str(item[0]).strip(), str(item[1]).strip()
+                if q and a:
+                    norm.append((q, a))
+            # dict {"question":..., "answer":...}
+            elif isinstance(item, dict):
+                q = str(item.get("question", "")).strip()
+                a = str(item.get("answer", "")).strip()
+                if q and a:
+                    norm.append((q, a))
+            # plain string: use sentence as both sides (fallback)
+            elif isinstance(item, str):
+                s = item.strip()
+                if s:
+                    norm.append((s, s))
+        return norm
+
+    # ensure session keys exist
+    if "flashcards" not in st.session_state:
+        st.session_state.flashcards = []
+    if "idx" not in st.session_state:
+        st.session_state.idx = 0
+    if "flipped" not in st.session_state:
+        st.session_state.flipped = False
+
+    gen = st.button("🃏 Generate Flashcards", type="primary")
+
+    if gen:
+        if not text or not text.strip():
             st.warning("Upload or paste text first.")
         else:
-            cards = make_flashcards(text, num_cards=num_cards)  # returns list of (Q,A)
-            st.session_state.flashcards = cards
-            st.session_state.idx = 0
-            st.session_state.flipped = False
+            try:
+                raw_cards = make_flashcards(text, num_cards=num_cards)  # could be tuples OR dicts
+            except TypeError:
+                # handle older signature: make_flashcards(text, max_cards=...)
+                raw_cards = make_flashcards(text, max_cards=num_cards)
+            except Exception as e:
+                st.error(f"Flashcard generator crashed: {e}")
+                raw_cards = []
 
-    if "flashcards" in st.session_state and st.session_state.flashcards:
-        q, a = st.session_state.flashcards[st.session_state.idx]
+            cards = _normalize_cards(raw_cards)
+            if not cards:
+                st.error("Could not generate flashcards. Try longer/cleaner text.")
+            else:
+                st.session_state.flashcards = cards
+                st.session_state.idx = 0
+                st.session_state.flipped = False
+                st.success(f"Generated {len(cards)} flashcards.")
+
+    # render
+    cards = st.session_state.flashcards
+    if cards:
+        # clamp index to valid range (helps after re-runs)
+        st.session_state.idx = max(0, min(st.session_state.idx, len(cards) - 1))
+        q, a = cards[st.session_state.idx]
+
         flipped_class = "is-flipped" if st.session_state.flipped else ""
         st.markdown(f"""
         <div class="flip-wrap">
@@ -225,20 +288,28 @@ elif choice == "Flashcards":
         </div>
         """, unsafe_allow_html=True)
 
-        col1, col2, col3 = st.columns([1,1,1])
-        with col1:
+        c1, c2, c3, c4 = st.columns([1,1,1,1])
+        with c1:
+            if st.button("⏮ First"):
+                st.session_state.idx = 0
+                st.session_state.flipped = False
+        with c2:
             if st.button("⬅️ Prev"):
                 if st.session_state.idx > 0:
                     st.session_state.idx -= 1
                     st.session_state.flipped = False
-        with col2:
+        with c3:
             if st.button("🔄 Flip"):
                 st.session_state.flipped = not st.session_state.flipped
-        with col3:
+        with c4:
             if st.button("➡️ Next"):
-                if st.session_state.idx < len(st.session_state.flashcards)-1:
+                if st.session_state.idx < len(cards) - 1:
                     st.session_state.idx += 1
                     st.session_state.flipped = False
+
+        st.caption(f"Card {st.session_state.idx+1} / {len(cards)}")
+    else:
+        st.info("No flashcards yet. Paste text above and click **Generate Flashcards**.")
 
 # --- Deadlines ---
 elif choice == "Deadlines":
